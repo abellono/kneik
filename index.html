@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Kneik</title>
+<meta name="theme-color" content="#0a0a0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230a0a0a'/%3E%3Cpath d='M20 78 L48 42 L62 58 L80 26' stroke='%23ff9000' stroke-width='12' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -25,8 +29,8 @@
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 
   /* ---------- header ---------- */
-  header{position:fixed;inset:0 0 auto 0;z-index:1200;height:var(--head);background:var(--bg);
-    padding:0 22px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+  header{position:fixed;inset:0 0 auto 0;z-index:1200;height:calc(var(--head) + env(safe-area-inset-top,0px));background:var(--bg);
+    padding:env(safe-area-inset-top,0px) 22px 0;display:flex;flex-direction:column;justify-content:center;gap:12px}
   .hrow{display:flex;align-items:center;gap:20px}
   .mark{font-weight:800;font-size:19px;letter-spacing:-.02em;white-space:nowrap}
   .filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1}
@@ -44,7 +48,7 @@
   .bar i{position:absolute;inset:0;right:auto;background:var(--accent);transition:width .4s}
 
   /* ---------- layout ---------- */
-  main{position:fixed;inset:var(--head) 0 0 0;display:flex}
+  main{position:fixed;inset:calc(var(--head) + env(safe-area-inset-top,0px)) 0 0 0;display:flex}
   .side{width:var(--side);flex-shrink:0;display:flex;flex-direction:column;background:var(--bg)}
   .stabs{display:flex;gap:22px;padding:2px 22px 12px;border-bottom:1px solid var(--sep)}
   .stab{font:700 13px Manrope;color:var(--text2);background:none;border:0;padding:4px 0;
@@ -52,7 +56,7 @@
   .stab:hover{color:var(--text)}
   .stab.on{color:var(--text)}
   .stab.on::after{content:'';position:absolute;left:0;right:0;bottom:-13px;height:2px;background:var(--accent)}
-  .scontent{flex:1;overflow-y:auto;padding:8px 22px 48px;scrollbar-width:thin;scrollbar-color:var(--fill) transparent}
+  .scontent{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:8px 22px 48px;scrollbar-width:thin;scrollbar-color:var(--fill) transparent}
 
   #mapwrap{flex:1;position:relative}
   #map{position:absolute;inset:0;background:var(--bg)}
@@ -87,7 +91,8 @@
   .axis line{stroke:rgba(255,255,255,.06)}
   .axlabel{font:600 10px Manrope;fill:var(--text2)}
   .frontier{fill:none;stroke:var(--accent);stroke-width:1.3;stroke-dasharray:1 4;stroke-linecap:round;opacity:.6}
-  .dot{cursor:pointer;transition-property:opacity,stroke,stroke-width;transition-duration:.15s}
+  .dotg{cursor:pointer}
+  .dot{transition-property:opacity,stroke,stroke-width;transition-duration:.15s}
   .dot:hover{stroke:#fff;stroke-width:1.5}
   .dot.sel{stroke:#fff;stroke-width:2}
   .dot.done{opacity:.18}
@@ -121,15 +126,21 @@
 
   /* ---------- mobile ---------- */
   @media (max-width:860px){
-    :root{--head:88px}
+    :root{--head:124px}
     main{flex-direction:column-reverse}
     .side{width:auto;flex:1;min-height:0;border-top:1px solid var(--sep)}
-    #mapwrap{flex:none;height:42vh}
-    header{padding:0 16px}
+    #mapwrap{flex:none;height:42vh;height:42dvh}
+    header{padding-left:16px;padding-right:16px}
+    .hrow{flex-wrap:wrap;gap:8px 20px}
     .mark{font-size:17px}
+    .filters{order:3;flex-basis:100%;margin:0 -16px;padding:0 16px}
     .stabs{padding:12px 16px}
-    .scontent{padding:4px 16px 60px}
-    .dossier{left:12px;right:12px;bottom:12px;width:auto}
+    .scontent{padding:4px 16px calc(60px + env(safe-area-inset-bottom,0px))}
+    .dossier{position:fixed;left:0;right:0;bottom:0;width:auto;border-radius:22px 22px 0 0;
+      padding-bottom:env(safe-area-inset-bottom,0px);
+      box-shadow:0 0 0 1px rgba(255,255,255,.06),0 -12px 32px rgba(0,0,0,.5);
+      transform:translateY(102%)}
+    .dossier.open{transform:none}
   }
 </style>
 </head>
@@ -209,10 +220,13 @@ L.marker(HOME,{icon:L.divIcon({className:'',html:
 const lay={};
 SEGMENTS.forEach(s=>{
   const pts=decode(s.polyline);
+  const hit=L.polyline(pts,{color:'#000',opacity:0,weight:22}).addTo(map);
   const core=L.polyline(pts,{color:col(s.watts),weight:3.5,opacity:.9}).addTo(map);
-  core.on('click',()=>select(s.id));
-  core.on('mouseover',()=>{if(s.id!==selected)core.setStyle({weight:6})});
-  core.on('mouseout',()=>{if(s.id!==selected)core.setStyle({weight:3.5})});
+  for(const l of [hit,core]){
+    l.on('click',()=>select(s.id));
+    l.on('mouseover',()=>{if(s.id!==selected)core.setStyle({weight:6})});
+    l.on('mouseout',()=>{if(s.id!==selected)core.setStyle({weight:3.5})});
+  }
   lay[s.id]={core,pts};
 });
 setTimeout(()=>map.invalidateSize(),60);
@@ -220,7 +234,7 @@ addEventListener('resize',()=>map.invalidateSize());
 
 function flyTo(id){
   const pad=isMobile()
-    ?{paddingTopLeft:[24,24],paddingBottomRight:[24,232]}
+    ?{paddingTopLeft:[24,24],paddingBottomRight:[24,28]}
     :{paddingTopLeft:[40,40],paddingBottomRight:[334,248]};
   const bounds=L.latLngBounds(lay[id].pts);
   if(document.hidden||matchMedia('(prefers-reduced-motion: reduce)').matches)
@@ -245,20 +259,18 @@ const my=w=>H-M.b-(w-Y0)/(Y1-Y0)*(H-M.t-M.b);
   const pareto=SEGMENTS.filter(s=>!SEGMENTS.some(o=>o!==s&&o.riders>=s.riders&&o.watts<=s.watts))
     .sort((a,b)=>a.riders-b.riders);
   S+=`<path class="frontier" d="${pareto.map((s,i)=>(i?'L':'M')+mx(s.riders)+' '+my(s.watts)).join(' ')}"/>`;
+  const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
   [...SEGMENTS].sort((a,b)=>b.kom_s-a.kom_s).forEach(s=>{
     const r=3.5+(s.kom_s-7)*(6.5/12);
-    S+=`<g class="dotg" data-id="${s.id}">
+    S+=`<g class="dotg" data-id="${s.id}"><title>${esc(s.name)} — ${s.kom} · ${s.watts} W · ${fmtR(s.riders)} riders</title>
+      <circle class="hitc" cx="${mx(s.riders)}" cy="${my(s.watts)}" r="${(r+9).toFixed(1)}" fill="transparent"/>
       <circle class="dot" data-id="${s.id}" cx="${mx(s.riders)}" cy="${my(s.watts)}" r="${r.toFixed(1)}"
-        fill="${col(s.watts)}" fill-opacity=".9" stroke="#0a0a0a" stroke-width="1"><title></title></circle>
+        fill="${col(s.watts)}" fill-opacity=".9" stroke="#0a0a0a" stroke-width="1"/>
       <text class="tick" x="${mx(s.riders)}" y="${my(s.watts)-r-3}" text-anchor="middle" style="display:none">✓</text></g>`;
   });
   document.getElementById('chart').innerHTML=S;
-  document.querySelectorAll('#chart .dot').forEach(d=>{
-    const s=SEGMENTS.find(x=>x.id==d.dataset.id);
-    d.querySelector('title').textContent=`${s.name} — ${s.kom} · ${s.watts} W · ${fmtR(s.riders)} riders`;
-  });
   document.getElementById('chart').addEventListener('click',e=>{
-    const t=e.target.closest('.dot'); if(t) select(+t.dataset.id);
+    const g=e.target.closest('.dotg'); if(g) select(+g.dataset.id);
   });
 })();
 
