@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kneik</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --bg:#0a0a0a; --surface:#141414; --fill:#1f1f1f; --sep:rgba(255,255,255,.08);
+    --text:#ffffff; --text2:#9a9a9a;
+    --accent:#ff9000;
+    --p1:#fff1dc; --p2:#ffcf80; --p3:#f0a832; --p4:#c85400;  /* pale = cheap crown, hot = monument */
+    --head:92px; --side:420px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);
+    font-family:Manrope,-apple-system,BlinkMacSystemFont,sans-serif;
+    font-feature-settings:"tnum";overflow:hidden}
+  ::selection{background:var(--accent);color:#0a0a0a}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
+  /* ---------- header ---------- */
+  header{position:fixed;inset:0 0 auto 0;z-index:1200;height:var(--head);background:var(--bg);
+    padding:0 22px;display:flex;flex-direction:column;justify-content:center;gap:12px}
+  .hrow{display:flex;align-items:center;gap:20px}
+  .mark{font-weight:800;font-size:19px;letter-spacing:-.02em;white-space:nowrap}
+  .filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{flex-shrink:0;font:600 12px Manrope;color:var(--text2);background:transparent;
+    border:0;padding:9px 14px;cursor:pointer;border-radius:999px;transition-property:color,background-color,transform;transition-duration:.15s}
+  .chip:hover{color:var(--text)}
+  .chip:active{transform:scale(.96)}
+  .chip.on{background:var(--fill);color:var(--text)}
+  .score{margin-left:auto;display:flex;align-items:baseline;gap:7px;white-space:nowrap}
+  .score b{font-size:21px;font-weight:800}
+  .score span{font-size:11px;font-weight:600;color:var(--text2)}
+  .bar{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--fill)}
+  .bar em{position:absolute;inset:0;right:auto;background:var(--accent);opacity:.35;transition:width .4s}
+  .bar i{position:absolute;inset:0;right:auto;background:var(--accent);transition:width .4s}
+
+  /* ---------- layout ---------- */
+  main{position:fixed;inset:var(--head) 0 0 0;display:flex}
+  .side{width:var(--side);flex-shrink:0;display:flex;flex-direction:column;background:var(--bg)}
+  .stabs{display:flex;gap:22px;padding:2px 22px 12px;border-bottom:1px solid var(--sep)}
+  .stab{font:700 13px Manrope;color:var(--text2);background:none;border:0;padding:4px 0;
+    cursor:pointer;position:relative;transition:color .15s}
+  .stab:hover{color:var(--text)}
+  .stab.on{color:var(--text)}
+  .stab.on::after{content:'';position:absolute;left:0;right:0;bottom:-13px;height:2px;background:var(--accent)}
+  .scontent{flex:1;overflow-y:auto;padding:8px 22px 48px;scrollbar-width:thin;scrollbar-color:var(--fill) transparent}
+
+  #mapwrap{flex:1;position:relative}
+  #map{position:absolute;inset:0;background:var(--bg)}
+  .leaflet-container{background:var(--bg);font-family:inherit}
+
+  /* ---------- campaign: flat rows ---------- */
+  .tier{margin-top:26px}
+  .tier:first-child{margin-top:14px}
+  .tier-h{font:600 11px Manrope;color:var(--text2);margin-bottom:4px}
+  .row{display:flex;align-items:center;gap:13px;padding:11px 12px;margin:0 -12px;cursor:pointer;
+    border-bottom:1px solid var(--sep);border-radius:12px;
+    transition-property:background-color;transition-duration:.15s}
+  .row:hover{background:var(--surface)}
+  .row.sel .nm{color:var(--accent)}
+  .st{flex-shrink:0;width:38px;height:38px;margin-left:-4px;border:0;background:none;cursor:pointer;
+    display:grid;place-items:center;color:var(--text2)}
+  .st i{width:17px;height:17px;border:2px solid currentColor;border-radius:50%;
+    display:grid;place-items:center;font-style:normal;font-size:9px;font-weight:800;transition-property:background-color,border-color,color;transition-duration:.15s}
+  .row.tried .st i{border-style:dashed;color:var(--text)}
+  .row.taken .st i{background:var(--accent);border-color:var(--accent);color:#0a0a0a}
+  .row.taken .nm{color:var(--text2);text-decoration:line-through;text-decoration-thickness:1.5px}
+  .rbody{flex:1;min-width:0}
+  .nm{font:700 14px Manrope;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+  .sub{font:500 11.5px Manrope;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .w{font:800 14px Manrope;flex-shrink:0}
+  .empty{padding:56px 0;text-align:center;font:600 13px Manrope;color:var(--text2)}
+
+  /* ---------- market ---------- */
+  .chartbox{margin-top:16px}
+  .chartbox svg{width:100%;height:auto;display:block}
+  .axis text{font:500 9.5px Manrope;fill:var(--text2)}
+  .axis line{stroke:rgba(255,255,255,.06)}
+  .axlabel{font:600 10px Manrope;fill:var(--text2)}
+  .frontier{fill:none;stroke:var(--accent);stroke-width:1.3;stroke-dasharray:1 4;stroke-linecap:round;opacity:.6}
+  .dot{cursor:pointer;transition-property:opacity,stroke,stroke-width;transition-duration:.15s}
+  .dot:hover{stroke:#fff;stroke-width:1.5}
+  .dot.sel{stroke:#fff;stroke-width:2}
+  .dot.done{opacity:.18}
+  .dot.fade{opacity:.06;pointer-events:none}
+  .tick{font:800 9px Manrope;fill:var(--text2);pointer-events:none}
+
+  /* ---------- dossier ---------- */
+  .dossier{position:absolute;z-index:1100;right:18px;bottom:18px;width:300px;background:var(--surface);
+    border-radius:22px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.06),0 12px 32px rgba(0,0,0,.5);
+    transform:translateY(14px);opacity:0;pointer-events:none;transition-property:transform,opacity;transition-duration:.22s;transition-timing-function:cubic-bezier(.2,0,0,1)}
+  .dossier.open{transform:none;opacity:1;pointer-events:auto}
+  .dossier .hd{padding:18px 20px 4px}
+  .dossier h2{font:800 19px Manrope;letter-spacing:-.01em;line-height:1.2;padding-right:20px}
+  .dossier .tag{font:600 11px Manrope;color:var(--text2);margin-top:3px}
+  .dgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px 8px;padding:14px 20px 16px}
+  .cell b{display:block;font:700 14px Manrope}
+  .cell span{font:600 10px Manrope;color:var(--text2)}
+  .staterow{display:flex;background:var(--fill);border-radius:999px;margin:0 20px 14px;padding:3px}
+  .staterow button{flex:1;border:0;background:none;color:var(--text2);font:700 11.5px Manrope;
+    padding:10px 0;cursor:pointer;border-radius:999px;transition-property:color,background-color,transform;transition-duration:.15s}
+  .staterow button:hover{color:var(--text)}
+  .staterow button:active{transform:scale(.96)}
+  .staterow button.on{background:#fff;color:#0a0a0a}
+  .dossier a.go{display:block;text-align:center;font:800 13px Manrope;color:#0a0a0a;
+    background:var(--accent);padding:13px;text-decoration:none;margin:0 20px 20px;border-radius:999px;transition-property:filter,transform;transition-duration:.15s}
+  .dossier a.go:hover{filter:brightness(1.12)}
+  .dossier a.go:active{transform:scale(.96)}
+  .dossier .x{position:absolute;top:13px;right:14px;width:30px;height:30px;border-radius:50%;
+    background:var(--fill);border:0;color:var(--text2);font-size:12px;cursor:pointer;transition-property:color,background-color;transition-duration:.15s}
+  .dossier .x:hover{color:var(--text)}
+
+  /* ---------- mobile ---------- */
+  @media (max-width:860px){
+    :root{--head:88px}
+    main{flex-direction:column-reverse}
+    .side{width:auto;flex:1;min-height:0;border-top:1px solid var(--sep)}
+    #mapwrap{flex:none;height:42vh}
+    header{padding:0 16px}
+    .mark{font-size:17px}
+    .stabs{padding:12px 16px}
+    .scontent{padding:4px 16px 60px}
+    .dossier{left:12px;right:12px;bottom:12px;width:auto}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <div class="mark">Kneik</div>
+    <div class="filters" id="filters">
+      <button class="chip on" data-f="all">All</button>
+      <button class="chip" data-f="todo">To do</button>
+      <button class="chip" data-f="soft">Under 800 W</button>
+      <button class="chip" data-f="near">Near</button>
+      <button class="chip" data-f="quiet">Quiet</button>
+      <button class="chip" data-f="steep">Steep</button>
+    </div>
+    <div class="score"><b id="taken">0/37</b><span>crowns</span></div>
+  </div>
+  <div class="bar"><em id="barTry"></em><i id="barTake"></i></div>
+</header>
+
+<main>
+  <div class="side">
+    <div class="stabs" id="stabs">
+      <button class="stab on" data-p="campaign">Campaign</button>
+      <button class="stab" data-p="market">Market</button>
+    </div>
+    <div class="scontent">
+      <div id="panel-campaign"></div>
+      <div id="panel-market" style="display:none">
+        <div class="chartbox"><svg id="chart" viewBox="0 0 460 560"></svg></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="dossier" id="dossier">
+      <button class="x" id="dClose">✕</button>
+      <div class="hd"><h2 id="dName"></h2><div class="tag" id="dTag"></div></div>
+      <div class="dgrid" id="dGrid"></div>
+      <div class="staterow" id="dState">
+        <button data-s="todo">Todo</button><button data-s="tried">Tried</button><button data-s="taken">Taken</button>
+      </div>
+      <a class="go" id="dLink" target="_blank" rel="noopener">Open in Strava</a>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="segments.js"></script>
+<script>
+/* ---------- shared state ---------- */
+const KEY='kneik-state';
+let state=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem('kom-hunter-state')||'{}');
+let filter='all', selected=null, panel=localStorage.getItem('kneik-panel')||localStorage.getItem('kom-hunter-panel')||'campaign';
+const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
+const col=w=>w<800?'#fff1dc':w<1000?'#ffcf80':w<1200?'#f0a832':'#c85400';
+const match=s=>filter==='all'||(filter==='todo'&&state[s.id]!=='taken')||(filter==='soft'&&s.watts<800)
+  ||(filter==='near'&&s.home_km<3)||(filter==='quiet'&&s.riders<1000)||(filter==='steep'&&s.grade>=8);
+const fmtR=n=>n>=1000?(n/1000).toFixed(n<10000?1:0)+'k':n;
+const isMobile=()=>matchMedia('(max-width:860px)').matches;
+
+/* ---------- map ---------- */
+function decode(str){let i=0,lat=0,lng=0,pts=[];while(i<str.length){for(const j of[0,1]){let s=0,r=0,b;
+  do{b=str.charCodeAt(i++)-63;r|=(b&31)<<s;s+=5}while(b>=32);const d=(r&1)?~(r>>1):(r>>1);j===0?lat+=d:lng+=d}
+  pts.push([lat/1e5,lng/1e5])}return pts}
+
+const map=L.map('map',{zoomControl:false}).setView(HOME,12);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  {attribution:'© OpenStreetMap © CARTO',maxZoom:19}).addTo(map);
+L.circle(HOME,{radius:5000,color:'#8f8f8f',weight:1,dashArray:'5 7',fill:false,opacity:.4}).addTo(map);
+L.marker(HOME,{icon:L.divIcon({className:'',html:
+  `<div style="width:14px;height:14px;background:#ff9000;border:2.5px solid #fff;border-radius:50%;box-shadow:0 0 0 3px rgba(255,144,0,.25)"></div>`,
+  iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);
+
+const lay={};
+SEGMENTS.forEach(s=>{
+  const pts=decode(s.polyline);
+  const core=L.polyline(pts,{color:col(s.watts),weight:3.5,opacity:.9}).addTo(map);
+  core.on('click',()=>select(s.id));
+  core.on('mouseover',()=>{if(s.id!==selected)core.setStyle({weight:6})});
+  core.on('mouseout',()=>{if(s.id!==selected)core.setStyle({weight:3.5})});
+  lay[s.id]={core,pts};
+});
+setTimeout(()=>map.invalidateSize(),60);
+addEventListener('resize',()=>map.invalidateSize());
+
+function flyTo(id){
+  const pad=isMobile()
+    ?{paddingTopLeft:[24,24],paddingBottomRight:[24,232]}
+    :{paddingTopLeft:[40,40],paddingBottomRight:[334,248]};
+  const bounds=L.latLngBounds(lay[id].pts);
+  if(document.hidden||matchMedia('(prefers-reduced-motion: reduce)').matches)
+    map.fitBounds(bounds,{...pad,maxZoom:16,animate:false});
+  else map.flyToBounds(bounds,{...pad,duration:.7,maxZoom:16});
+}
+
+/* ---------- market ---------- */
+const W=460,H=560,M={t:22,r:16,b:44,l:44};
+const X0=Math.log10(40),X1=Math.log10(45000),Y0=400,Y1=1550;
+const mx=r=>M.l+(Math.log10(r)-X0)/(X1-X0)*(W-M.l-M.r);
+const my=w=>H-M.b-(w-Y0)/(Y1-Y0)*(H-M.t-M.b);
+(function buildChart(){
+  let S='<g class="axis">';
+  [46,100,1000,10000,37000].forEach(v=>{S+=`<line x1="${mx(v)}" y1="${M.t}" x2="${mx(v)}" y2="${H-M.b}"/>
+    <text x="${mx(v)}" y="${H-M.b+15}" text-anchor="middle">${v>=1000?v/1000+'k':v}</text>`});
+  [400,600,800,1000,1200,1400].forEach(v=>{S+=`<line x1="${M.l}" y1="${my(v)}" x2="${W-M.r}" y2="${my(v)}"/>
+    <text x="${M.l-6}" y="${my(v)+3}" text-anchor="end">${v}</text>`});
+  S+='</g>';
+  S+=`<text class="axlabel" x="${W-M.r}" y="${H-8}" text-anchor="end">riders →</text>`;
+  S+=`<text class="axlabel" x="${M.l-30}" y="${M.t-8}" text-anchor="start">watts</text>`;
+  const pareto=SEGMENTS.filter(s=>!SEGMENTS.some(o=>o!==s&&o.riders>=s.riders&&o.watts<=s.watts))
+    .sort((a,b)=>a.riders-b.riders);
+  S+=`<path class="frontier" d="${pareto.map((s,i)=>(i?'L':'M')+mx(s.riders)+' '+my(s.watts)).join(' ')}"/>`;
+  [...SEGMENTS].sort((a,b)=>b.kom_s-a.kom_s).forEach(s=>{
+    const r=3.5+(s.kom_s-7)*(6.5/12);
+    S+=`<g class="dotg" data-id="${s.id}">
+      <circle class="dot" data-id="${s.id}" cx="${mx(s.riders)}" cy="${my(s.watts)}" r="${r.toFixed(1)}"
+        fill="${col(s.watts)}" fill-opacity=".9" stroke="#0a0a0a" stroke-width="1"><title></title></circle>
+      <text class="tick" x="${mx(s.riders)}" y="${my(s.watts)-r-3}" text-anchor="middle" style="display:none">✓</text></g>`;
+  });
+  document.getElementById('chart').innerHTML=S;
+  document.querySelectorAll('#chart .dot').forEach(d=>{
+    const s=SEGMENTS.find(x=>x.id==d.dataset.id);
+    d.querySelector('title').textContent=`${s.name} — ${s.kom} · ${s.watts} W · ${fmtR(s.riders)} riders`;
+  });
+  document.getElementById('chart').addEventListener('click',e=>{
+    const t=e.target.closest('.dot'); if(t) select(+t.dataset.id);
+  });
+})();
+
+/* ---------- campaign ---------- */
+const TIERS=[
+  ['Openers · under 800 W',s=>s.watts<800],
+  ['Prime · 800–999 W',s=>s.watts>=800&&s.watts<1000],
+  ['Heavy · 1000–1199 W',s=>s.watts>=1000&&s.watts<1200],
+  ['Monuments · 1200 W and up',s=>s.watts>=1200],
+];
+const CYCLE={undefined:'tried',tried:'taken',taken:undefined};
+
+function renderList(){
+  const html=TIERS.map(([t,fn])=>{
+    const rows=SEGMENTS.filter(fn).filter(match).sort((a,b)=>a.watts-b.watts);
+    if(!rows.length)return'';
+    return `<div class="tier"><div class="tier-h">${t}</div>`+
+      rows.map(s=>{
+        const st=state[s.id];
+        return `<div class="row ${st||''} ${s.id===selected?'sel':''}" data-id="${s.id}">
+          <button class="st" data-id="${s.id}" aria-label="cycle status"><i>${st==='taken'?'✓':''}</i></button>
+          <div class="rbody"><div class="nm">${s.name}</div>
+            <div class="sub">${s.kom} · ${Math.round(s.len_m)} m · ${s.grade.toFixed(1)} % · ${s.home_km.toFixed(1)} km · ${fmtR(s.riders)} riders</div></div>
+          <div class="w" style="color:${col(s.watts)}">${s.watts}</div>
+        </div>`}).join('')+'</div>';
+  }).join('');
+  document.getElementById('panel-campaign').innerHTML=
+    html||'<div class="empty">Nothing here. Loosen the filter.</div>';
+  document.querySelectorAll('.row .st').forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    const id=b.dataset.id;
+    state[id]=CYCLE[state[id]]; if(!state[id])delete state[id];
+    save(); renderAll();
+  });
+  document.querySelectorAll('.row').forEach(c=>{
+    const id=+c.dataset.id;
+    c.onclick=()=>select(id);
+    c.onmouseenter=()=>{if(id!==selected)lay[id].core.setStyle({weight:6})};
+    c.onmouseleave=()=>renderMapStyles();
+  });
+}
+
+/* ---------- dossier ---------- */
+function select(id){
+  selected=id;
+  const s=SEGMENTS.find(x=>x.id===id);
+  document.getElementById('dName').textContent=s.name;
+  document.getElementById('dTag').textContent=
+    `${s.riders.toLocaleString('en').replace(/,/g,' ')} riders have tried`;
+  document.getElementById('dGrid').innerHTML=[
+    [s.kom,'kom'],[`${s.watts} W`,'to take it'],[`${Math.round(s.len_m)} m`,'length'],
+    [`${s.grade.toFixed(1)} %`,'avg grade'],[`${s.max_grade.toFixed(1)} %`,'max'],[`${s.home_km.toFixed(1)} km`,'from home'],
+  ].map(([b,t])=>`<div class="cell"><b>${b}</b><span>${t}</span></div>`).join('');
+  document.getElementById('dLink').href=`https://www.strava.com/segments/${s.id}`;
+  document.getElementById('dossier').classList.add('open');
+  flyTo(id);
+  renderAll();
+}
+document.getElementById('dClose').onclick=()=>{selected=null;document.getElementById('dossier').classList.remove('open');renderAll()};
+document.getElementById('dState').onclick=e=>{
+  const b=e.target.closest('button'); if(!b||selected==null)return;
+  if(b.dataset.s==='todo')delete state[selected]; else state[selected]=b.dataset.s;
+  save(); renderAll();
+};
+addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('dClose').onclick()});
+
+/* ---------- render ---------- */
+function renderMapStyles(){
+  SEGMENTS.forEach(s=>{
+    const on=match(s), done=state[s.id]==='taken', sel=s.id===selected;
+    lay[s.id].core.setStyle({
+      color:sel?'#ffffff':col(s.watts),
+      opacity:!on?.05:done?.25:.9,
+      weight:sel?5.5:3.5});
+  });
+}
+function renderAll(){
+  const takenN=SEGMENTS.filter(s=>state[s.id]==='taken').length;
+  const triedN=SEGMENTS.filter(s=>state[s.id]==='tried').length;
+  document.getElementById('taken').textContent=`${takenN}/${SEGMENTS.length}`;
+  document.getElementById('barTake').style.width=(takenN/SEGMENTS.length*100)+'%';
+  document.getElementById('barTry').style.width=((takenN+triedN)/SEGMENTS.length*100)+'%';
+  renderMapStyles();
+  document.querySelectorAll('#chart .dotg').forEach(g=>{
+    const id=+g.dataset.id,s=SEGMENTS.find(x=>x.id===id);
+    const dot=g.querySelector('.dot'),tick=g.querySelector('.tick');
+    dot.classList.toggle('fade',!match(s));
+    dot.classList.toggle('done',match(s)&&state[id]==='taken');
+    dot.classList.toggle('sel',id===selected);
+    tick.style.display=state[id]==='taken'&&match(s)?'':'none';
+  });
+  renderList();
+  if(selected!=null){
+    document.querySelectorAll('#dState button').forEach(b=>
+      b.classList.toggle('on',(state[selected]||'todo')===b.dataset.s));
+  }
+}
+
+/* ---------- panel & filters ---------- */
+function setPanel(p){
+  panel=p; localStorage.setItem('kneik-panel',p);
+  document.querySelectorAll('.stab').forEach(t=>t.classList.toggle('on',t.dataset.p===p));
+  document.getElementById('panel-campaign').style.display=p==='campaign'?'':'none';
+  document.getElementById('panel-market').style.display=p==='market'?'':'none';
+}
+document.getElementById('stabs').onclick=e=>{const t=e.target.closest('.stab');if(t)setPanel(t.dataset.p)};
+document.getElementById('filters').onclick=e=>{
+  const c=e.target.closest('.chip'); if(!c)return;
+  filter=c.dataset.f;
+  document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===c));
+  renderAll();
+};
+setPanel(panel); renderAll();
+</script>
+</body>
+</html>
